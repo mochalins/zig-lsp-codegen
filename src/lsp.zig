@@ -1146,9 +1146,8 @@ pub const Transport = struct {
 
     pub const Stdio = struct {
         transport: Transport,
-        reader: std.io.Reader,
-        read_from: std.fs.File,
-        write_to: std.fs.File,
+        reader: std.fs.File.Reader,
+        writer: std.fs.File.Writer,
 
         pub fn init(
             read_buffer: []u8,
@@ -1162,30 +1161,23 @@ pub const Transport = struct {
                         .writeJsonMessage = &Stdio.writeJsonMessage,
                     },
                 },
-                .reader = std.fs.File.Reader.initInterface(read_buffer),
-                .read_from = read_from,
-                .write_to = write_to,
+                .reader = std.fs.File.Reader.init(read_from, read_buffer),
+                .writer = std.fs.File.Writer.init(write_to, &.{}),
             };
         }
 
         fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8 {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_reader: std.fs.File.Reader = .{
-                .file = stdio.read_from,
-                .interface = stdio.reader,
-            };
-            defer stdio.reader = file_reader.interface;
-            return lsp.readJsonMessage(&file_reader.interface, allocator) catch |err| switch (err) {
-                error.ReadFailed => return file_reader.err.?,
+            return lsp.readJsonMessage(&stdio.reader.interface, allocator) catch |err| switch (err) {
+                error.ReadFailed => return stdio.reader.err.?,
                 else => |e| return e,
             };
         }
 
         fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_writer = stdio.write_to.writer(&.{});
-            return lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
-                error.WriteFailed => return file_writer.err.?,
+            return lsp.writeJsonMessage(&stdio.writer.interface, json_message) catch |err| switch (err) {
+                error.WriteFailed => return stdio.writer.err.?,
             };
         }
     };
